@@ -238,6 +238,9 @@ public sealed class OpenAIChatAnswerProvider(AnswerSource source, string apiKey,
     public Uri? ChatCompletionsUrl { get; } = chatCompletionsUrl;
     private readonly AnswerHttpTransport transport = transport ?? AnswerHttpTransports.Shared;
 
+    /// <summary>One stable id per run, so OpenCode Go can route this conversation's requests together.</summary>
+    internal static readonly string OpenCodeSessionId = Guid.NewGuid().ToString();
+
     public async Task<AnswerResult> AnswerAsync(AnswerRequest request, Action<string> onTextChunk, CancellationToken cancellationToken = default)
     {
         var httpRequest = MakeHttpRequest(Source, ApiKey, Model, request, ChatCompletionsUrl);
@@ -372,6 +375,13 @@ public sealed class OpenAIChatAnswerProvider(AnswerSource source, string apiKey,
         httpRequest.SetHeader("Accept", "text/event-stream");
         // Ollama and LM Studio want no key; a server of the person's own may.
         if (apiKey.Length > 0) httpRequest.SetHeader("Authorization", $"Bearer {apiKey}");
+        // OpenCode Go's gateway (opencode.ai/inference/go) refuses a request that carries no session id:
+        // "Request is missing x-opencode-session and cannot be routed efficiently". One id per run is
+        // enough to keep this conversation's requests together; a server of the person's own sees nothing.
+        if (chatCompletionsUrl.Host.EndsWith("opencode.ai", StringComparison.OrdinalIgnoreCase))
+        {
+            httpRequest.SetHeader("x-opencode-session", OpenCodeSessionId);
+        }
         if (source == AnswerSource.OpenRouter)
         {
             // OpenRouter's app attribution: optional, but it is how the requests show up as

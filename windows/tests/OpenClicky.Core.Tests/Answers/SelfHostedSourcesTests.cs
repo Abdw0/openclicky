@@ -79,6 +79,21 @@ public class SelfHostedSourcesTests
     }
 
     [Fact]
+    public void AnOpenCodeGoRequestCarriesASessionID()
+    {
+        using var openCodeGo = OpenAIChatAnswerProvider.MakeHttpRequest(AnswerSource.CustomOpenAI, "oc_sk_mine", "glm-5.3-flash",
+            Request(withTools: false), new Uri("https://opencode.ai/inference/go/openai/v1/chat/completions"));
+        Assert.True(openCodeGo.Headers.TryGetValues("x-opencode-session", out var sessionIds));
+        Assert.True(Guid.TryParse(sessionIds!.Single(), out _));
+        Assert.Equal("Bearer oc_sk_mine", openCodeGo.Headers.Authorization!.ToString());
+
+        // A server of the person's own is sent no OpenCode header at all.
+        using var ownServer = OpenAIChatAnswerProvider.MakeHttpRequest(AnswerSource.CustomOpenAI, "sk-mine", "m", Request(withTools: false),
+            new Uri("https://my.server/v1/chat/completions"));
+        Assert.False(ownServer.Headers.Contains("x-opencode-session"));
+    }
+
+    [Fact]
     public async Task ALocalModelThatRefusesToolsIsAskedAgainWithoutThem()
     {
         var bodies = new List<JsonNode>();
